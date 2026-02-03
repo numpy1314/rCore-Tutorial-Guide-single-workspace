@@ -27,10 +27,11 @@
     use xmas_elf::ElfFile;
 
     /// 初始进程 initproc
-    pub static INITPROC: Lazy<Process> = Lazy::new(|| {
-        let elf_data = APPS.get("ch5b_initproc").unwrap();
-        Process::from_elf(ElfFile::new(elf_data).unwrap()).unwrap()
-    });
+    let initproc_data = APPS.get("initproc").unwrap();
+    if let Some(process) = Process::from_elf(ElfFile::new(initproc_data).unwrap()) {
+        PROCESSOR.get_mut().set_manager(ProcManager::new());
+        PROCESSOR.get_mut().add(process.pid, process, ProcId::from_usize(usize::MAX));
+    }
 
     /// 将初始进程加入调度队列
     pub fn add_initproc() {
@@ -43,8 +44,8 @@
         let initproc_data = APPS.get("ch5b_initproc").unwrap();
         let initproc = Process::from_elf(ElfFile::new(initproc_data).unwrap()).unwrap();
         let pid = initproc.pid;
-        PROCESSOR.get_mut().insert(pid, initproc);
-        PROCESSOR.get_mut().add(pid);
+        PROCESSOR.get_mut().add(process.pid, process, ProcId::from_usize(usize::MAX)); 
+        //设置了父进程ID为 usize::MAX，表示这是初始进程（没有父进程）
     }
 
 我们调用 ``Process::from_elf`` 来创建一个进程控制块。这个函数封装了从 ELF 文件构建进程所需的复杂逻辑：
@@ -106,8 +107,8 @@
         
         loop {
             // 1. 从管理器中取出一个任务
-            if let Some(pid) = PROCESSOR.get_mut().fetch() {
-                let task = PROCESSOR.get_mut().get_mut(pid).unwrap();
+            let processor: *mut PManager<Process, ProcManager> = PROCESSOR.get_mut() as *mut _;
+            if let Some(task) = unsafe { (*processor).find_next(){}     // 注意 task 是 Process 的可变引用
                 
                 // 2. 执行任务 (切换到用户态)
                 // ForeignContext::execute 会阻塞直到 Trap 发生
@@ -120,30 +121,22 @@
                     Trap::Exception(Exception::UserEnvCall) => {
                         use SyscallResult::*;
                         // handle_syscall 返回一个状态，指示调度行为
-                        match handle_syscall(task) {
-                            Done => { /* 继续运行当前进程 */ }
-                            // 进程退出：从管理器中移除
-                            Exit(code) => {
-                                log::info!("proc {} exit with {}", pid, code);
-                                PROCESSOR.get_mut().delete(pid);
-                                // 注意：这里需要处理父子进程关系（见后文）
+                        match tg_syscall::handle(Caller { entity: 0, flow: 0 }, id, args) {
+                            Ret::Done(ret) => match id {
+                                Id::EXIT => unsafe { (*processor).make_current_exited(ret) },  // 退出
+                                _ => {
+                                    *ctx.a_mut(0) = ret as _;  // 设置返回值
+                                    unsafe { (*processor).make_current_suspend() };  // 挂起
+                                }
+                            },
+                            Ret::Unsupported(_) => {
+                                unsafe { (*processor).make_current_exited(-2) };  // 不支持的系统调用
                             }
-                            // 进程 Yield：重新加入调度队列
-                            Yield => {
-                                PROCESSOR.get_mut().add(pid);
-                            }
-                            // ...
                         }
-                    }
-                    // 时间片耗尽
-                    Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                        tg_sbi::set_timer(u64::MAX); // 清除时钟
-                        PROCESSOR.get_mut().add(pid); // 重新加入调度队列
                     }
                     // 异常处理：杀死进程
                     trap => {
-                        log::error!("proc {} killed by {:?}", pid, trap);
-                        PROCESSOR.get_mut().delete(pid);
+                        unsafe { (*processor).make_current_exited(-3) };
                     }
                 }
             } else {
@@ -154,9 +147,9 @@
     }
 
 与之前的版本不同，这里没有显式的 ``suspend_current_and_run_next`` 函数。调度逻辑被内嵌在内核的主循环中：
-1.  **取任务**：``fetch()`` 从队列头部拿 PID。
+1.  **取任务**：``fetch()`` 从队列头部拿 任务结构体的可变引用。
 2.  **执行**：``task.context.execute()`` 本质上就是一次上下文切换。
-3.  **放回/销毁**：根据 Trap 原因，决定是将 PID 重新 ``add()`` 到队尾，还是 ``delete()`` 销毁。
+3.  **放回/销毁**：根据 Trap 原因，决定是将 task 重新 添加 到队尾，还是 退出 销毁。
 
 这种基于主循环的调度结构更加扁平，避免了深层函数调用带来的栈开销，也更符合“单内核栈”的模型。
 
@@ -217,32 +210,17 @@ fork 系统调用的实现
 
     // tg-ch5/src/main.rs (handle_syscall)
 
-    fn handle_syscall(task: &mut Process) -> SyscallResult {
-        // ... 获取参数 ...
-        match id {
-            Id::FORK => {
-                let new_proc = task.fork().unwrap();
-                let new_pid = new_proc.pid.get_usize();
-                
-                // 子进程返回值设置为 0
-                // 通过修改子进程保存在 context 中的 a0 寄存器实现
-                *new_proc.context.context.a_mut(0) = 0;
-
-                // 将子进程加入调度队列
-                let new_proc_pid = new_proc.pid; // Copy pid handle if implementing Copy, or just use usize for lookup
-                PROCESSOR.get_mut().insert(new_proc_pid, new_proc);
-                PROCESSOR.get_mut().add(new_proc_pid);
-
-                // 父进程返回子进程 PID
-                *task.context.context.a_mut(0) = new_pid;
-                task.context.move_next(); // PC + 4
-                SyscallResult::Done
-            }
-            // ...
-        }
+    fn fork(&self, _caller: Caller) -> isize {
+        let processor: *mut PManager<ProcStruct, ProcManager> = PROCESSOR.get_mut() as *mut _;
+        let current = unsafe { (*processor).current().unwrap() };
+        let parent_pid = current.pid; // 先保存父进程 pid
+        let mut child_proc = current.fork().unwrap();
+        let pid = child_proc.pid;
+        let context = &mut child_proc.context.context;
+        *context.a_mut(0) = 0 as _;  // 子进程返回0
+        unsafe { (*processor).add(pid, child_proc, parent_pid) };
+        pid.get_usize() as isize  // 父进程返回子进程PID
     }
-
-这里展示了如何直接操作上下文中的寄存器：``*context.a_mut(0) = val``。这比旧版本中通过 TrapContext 指针操作更加直观和安全。
 
 exec 系统调用的实现
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -278,25 +256,39 @@ exec 系统调用的实现
 
     // tg-ch5/src/main.rs
 
-    Id::EXEC => {
-        // 1. 从用户空间读取应用名称字符串
-        let ptr = args[0] as *const u8;
-        let name = unsafe { task.address_space.translated_str(ptr) };
-
-        // 2. 查找应用数据
-        if let Some(data) = APPS.get(name.as_str()) {
-            // 3. 执行替换
-            task.exec(ElfFile::new(data).unwrap());
-            
-            // exec 成功后，不需要手动设置返回值或移动 PC
-            // 因为 context 已经被重置为新程序的入口状态
-            SyscallResult::Done
-        } else {
-            // 找不到应用，返回错误
-            *task.context.context.a_mut(0) = -1 as isize as usize;
-            task.context.move_next();
-            SyscallResult::Done
-        }
+    // 在 SyscallContext::exec 方法中（第405-425行）
+    fn exec(&self, _caller: Caller, path: usize, count: usize) -> isize {
+        const READABLE: VmFlags<Sv39> = build_flags("RV");
+        let current = PROCESSOR.get_mut().current().unwrap();
+        
+        // 使用函数式编程链式处理
+        current
+            .address_space
+            // 1. 地址翻译：将用户空间指针转换为内核可访问的指针
+            .translate::<u8>(VAddr::new(path), READABLE)
+            // 2. 字符串解析：从原始字节创建UTF-8字符串
+            .map(|ptr| unsafe {
+                core::str::from_utf8_unchecked(core::slice::from_raw_parts(ptr.as_ptr(), count))
+            })
+            // 3. 应用查找：在预加载的应用映射表中查找
+            .and_then(|name| APPS.get(name))
+            // 4. ELF验证：解析ELF文件格式
+            .and_then(|input| ElfFile::new(input).ok())
+            // 5. 结果处理：成功执行替换或返回错误
+            .map_or_else(
+                || {
+                    // 错误分支：应用不存在或格式无效
+                    log::error!("unknown app, select one in the list: ");
+                    APPS.keys().for_each(|app| println!("{app}"));
+                    println!();
+                    -1  // 返回错误码
+                },
+                |data| {
+                    // 成功分支：执行进程映像替换
+                    current.exec(data);
+                    0   // 返回成功码
+                },
+            )
     }
 
 sys_read 获取输入
@@ -309,53 +301,33 @@ sys_read 获取输入
 
     // tg-ch5/src/main.rs
 
-    Id::READ => {
-        let fd = args[0];
-        let buf_ptr = args[1] as *mut u8;
-        let len = args[2];
-
-        match fd {
-            0 => { // 标准输入 (Stdin)
-                // 暂时只支持读取 1 个字符，这是为了配合 user_shell 的 getchar
-                // 实际生产系统中需要缓冲区管理
-                let mut c: u8;
-                loop {
-                    let ch = tg_sbi::console_getchar();
-                    if ch == 0 {
-                        // 串口没有输入，Yield 让出 CPU
-                        // 调度器会在后续轮次再次尝试
-                        task.context.move_next(); // 注意：这里是否应该移动 PC？
-                        // 实际上，如果 Yield 后回来重新执行 read，应该保持 PC 不变
-                        // 但这里的实现采用了简化的“非阻塞”风格：
-                        // 如果没读到，我们在用户库层面循环调用，
-                        // 或者在这里返回 Yield 状态但不移动 PC。
-                        
-                        // 更合理的非阻塞实现：
-                        return SyscallResult::Yield; 
-                    } else {
-                        c = ch as u8;
-                        break;
+    // 在 SyscallContext::read 方法中
+    fn read(&self, _caller: Caller, fd: usize, buf: usize, count: usize) -> isize {
+        if fd == STDIN {
+            // 1. 安全地翻译用户缓冲区地址
+            const WRITEABLE: VmFlags<Sv39> = build_flags("W_V");
+            if let Some(mut ptr) = PROCESSOR.get_mut().current().unwrap()
+                .address_space.translate::<u8>(VAddr::new(buf), WRITEABLE) 
+            {
+                // 2. 阻塞式读取count个字符
+                let mut ptr = unsafe { ptr.as_mut() } as *mut u8;
+                for _ in 0..count {
+                    let c = tg_sbi::console_getchar() as u8;  // 阻塞等待
+                    unsafe {
+                        *ptr = c;
+                        ptr = ptr.add(1);
                     }
                 }
-                
-                // 将读取的字符写入用户缓冲区
-                // 需要进行地址翻译
-                let buffers = task.address_space.translate_bytes(buf_ptr, len);
-                if !buffers.is_empty() {
-                    buffers[0][0] = c;
-                    *task.context.context.a_mut(0) = 1; // 返回读取字节数 1
-                } else {
-                    *task.context.context.a_mut(0) = 0;
-                }
-                task.context.move_next();
-                SyscallResult::Done
+                count as _  // 返回实际读取的字节数
+            } else {
+                // 3. 地址翻译失败
+                log::error!("ptr not writeable");
+                -1
             }
-            _ => {
-                // 不支持其他文件描述符
-                *task.context.context.a_mut(0) = -1 as isize as usize;
-                task.context.move_next();
-                SyscallResult::Done
-            }
+        } else {
+            // 4. 不支持的文件描述符
+            log::error!("unsupported fd: {fd}");
+            -1
         }
     }
 
@@ -415,45 +387,32 @@ sys_read 获取输入
 .. code-block:: rust
     :linenos:
 
-    Id::WAITPID => {
-        let pid = args[0] as isize;
-        let exit_code_ptr = args[1] as *mut i32;
+    // 退出系统调用处理（在主循环中）
+    Id::EXIT => unsafe { 
+        (*processor).make_current_exited(ret)  // 标记当前进程退出
+    },
+
+    // wait系统调用实现
+    fn wait(&self, _caller: Caller, pid: isize, exit_code_ptr: usize) -> isize {
+        let processor: *mut PManager<ProcStruct, ProcManager> = PROCESSOR.get_mut() as *mut _;
+        let current = unsafe { (*processor).current().unwrap() };
         
-        // 我们需要遍历当前进程的子进程列表
-        // 这需要 PROCESSOR 提供相关接口，或者我们在 Process 中维护了 children 列表
-        
-        let mut found_child = false;
-        let mut found_zombie = None;
-        
-        // 假设 manager 提供了迭代所有进程的能力，或者我们维护了父子关系
-        // 这里演示逻辑：
-        
-        // 1. 查找符合条件的子进程
-        // 条件：子进程的 parent_id == current_pid
-        // 且 (pid == -1 || 子进程.pid == pid)
-        
-        // 2. 检查状态
-        // 如果子进程是 Zombie -> 回收
-        // 如果子进程是 Running -> 返回 -2 (忙等待)或 Yield
-        // 如果找不到子进程 -> 返回 -1
-        
-        if let Some((child_pid, exit_code)) = found_zombie {
-            // 回收僵尸进程
-            PROCESSOR.get_mut().delete(child_pid);
+        // 1. 查询僵尸子进程
+        if let Some((dead_pid, exit_code)) = 
+            unsafe { (*processor).wait(ProcId::from_usize(pid as usize)) } 
+        {
+            // 2. 将退出码写入用户空间
+            const WRITABLE: VmFlags<Sv39> = build_flags("W_V");
+            if let Some(mut ptr) = current.address_space
+                .translate::<i32>(VAddr::new(exit_code_ptr), WRITABLE) 
+            {
+                unsafe { *ptr.as_mut() = exit_code as i32 };
+            }
             
-            // 写入 exit_code 到用户空间
-            let translated_ptr = task.address_space.translate_bytes(exit_code_ptr as *mut u8, 4);
-            // 写入数据...
-            
-            *task.context.context.a_mut(0) = child_pid as usize;
-        } else if found_child {
-            // 有子进程但没退出
-            *task.context.context.a_mut(0) = -2 as isize as usize;
+            // 3. 返回子进程PID（资源由PManager内部回收）
+            dead_pid.get_usize() as isize
         } else {
-            // 无子进程
-            *task.context.context.a_mut(0) = -1 as isize as usize;
+            // 4. 子进程不存在
+            -1
         }
-        
-        task.context.move_next();
-        SyscallResult::Done
     }

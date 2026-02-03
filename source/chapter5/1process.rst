@@ -10,9 +10,13 @@ fork 系统调用
 .. code-block:: rust
 
     /// 功能：由当前进程 fork 出一个子进程。
+    /// 参数：_caller: Caller - 调用者信息，包含系统调用发起者的身份信息，具体包含两个字段：
+    /// entity: usize - 发起者拥有的资源集标记（相当于进程号）
+    /// flow: usize - 发起者的控制流标记（相当于线程号）
+    /// 注：参数 _caller 虽然传递了调用者信息，但在当前实现中并未使用，后续可作为拓展。
     /// 返回值：对于子进程返回 0，对于当前进程则返回子进程的 PID 。
     /// syscall ID：220
-    pub fn sys_fork() -> isize;
+    fn fork(&self, _caller: Caller) -> isize;
 
 exec 系统调用
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -20,13 +24,13 @@ exec 系统调用
 .. code-block:: rust
 
     /// 功能：将当前进程的地址空间清空并加载一个特定的可执行文件，返回用户态后开始它的执行。
-    /// 参数：字符串 path 给出了要加载的可执行文件的名字；
+    /// 参数：字符串 path 给出了要加载的可执行文件的名字；count 表示要执行的程序路径字符串的长度（不包含结尾的 '\0'）
     /// 返回值：如果出错的话（如找不到名字相符的可执行文件）则返回 -1，否则不应该返回。
     /// 注意：path 必须以 "\0" 结尾，否则内核将无法确定其长度
     /// syscall ID：221
-    pub fn sys_exec(path: &str) -> isize;
+    fn exec(&self, _caller: Caller, path: usize, count: usize) -> isize;
 
-利用 ``fork`` 和 ``exec`` 的组合，我们能让创建一个子进程，并令其执行特定的可执行文件。
+利用 ``fork`` 和 ``exec`` 的组合，我们能让进程创建一个子进程，并令其执行特定的可执行文件。
 
 waitpid 系统调用
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -35,15 +39,18 @@ waitpid 系统调用
 
     /// 功能：当前进程等待一个子进程变为僵尸进程，回收其全部资源并收集其返回值。
     /// 参数：pid 表示要等待的子进程的进程 ID，如果为 -1 的话表示等待任意一个子进程；
-    /// exit_code 表示保存子进程返回值的地址，如果这个地址为 0 的话表示不必保存。
+    /// exit_code_ptr 表示保存子进程返回值的地址，如果这个地址为 0 的话表示不必保存。
     /// 返回值：如果要等待的子进程不存在则返回 -1；否则如果要等待的子进程均未结束则返回 -2；
     /// 否则返回结束的子进程的进程 ID。
     /// syscall ID：260
-    pub fn sys_waitpid(pid: isize, exit_code: *mut i32) -> isize;
+    fn wait(&self, _caller: Caller, pid: isize, exit_code_ptr: usize) -> isize;
 
 
-``sys_waitpid`` 在用户库中被封装成两个不同的 API， ``wait(exit_code: &mut i32)`` 和 ``waitpid(pid: usize, exit_code: &mut i32)``，
-前者用于等待任意一个子进程，后者用于等待特定子进程。它们实现的策略是如果子进程还未结束，就以 yield 让出时间片：
+在实际应用中，为了简化应用开发，用户态基础库（tg-user/src/lib.rs）将内核提供的非阻塞系统调用 ``sys_waitpid``进一步封装为具有阻塞语义的高层接口 ``wait`` 和 ``waitpid``。
+
+``wait(exit_code: &mut i32)``：传入 PID -1，用于等待任意一个子进程退出。
+
+``waitpid(pid: usize, exit_code: &mut i32)``：传入指定 PID，用于等待特定子进程退出。
 
 .. code-block:: rust
     :linenos:
@@ -52,9 +59,21 @@ waitpid 系统调用
 
     pub fn wait(exit_code: &mut i32) -> isize {
         loop {
+            // 调用 sys_waitpid，参数 -1 表示等待任意子进程
             match sys_waitpid(-1, exit_code as *mut _) {
-                -2 => { sys_yield(); }
-                n => { return n; }
+                -2 => { yield_(); } // -2 表示子进程存在但仍在运行，因此主动交出 CPU
+                // -1 (无子进程) 或 >0 (回收成功 PID) -> 直接返回
+                exit_pid => return exit_pid,
+            }
+        }
+    }
+
+    pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
+        loop {
+            // 调用 sys_waitpid，参数 pid 表示等待指定子进程
+            match sys_waitpid(pid as isize, exit_code as *mut _) {
+                -2 => { yield_(); } // 同样，还在运行就 yield
+                exit_pid => return exit_pid,
             }
         }
     }
@@ -74,42 +93,41 @@ waitpid 系统调用
 .. code-block:: rust
     :linenos:
 
-    // tg-user/src/bin/ch5b_initproc.rs
+    // tg-user/src/bin/initproc.rs
 
     #![no_std]
     #![no_main]
 
-    #[macro_use]
     extern crate user_lib;
 
-    use user_lib::{
-        fork,
-        wait,
-        exec,
-        yield_,
-    };
+    use user_lib::{exec, fork, wait};
 
     #[no_mangle]
-    fn main() -> i32 {
+    extern "C" fn main() -> i32 {
         if fork() == 0 {
-            exec("ch5b_user_shell\0");
+            let target = match option_env!("CHAPTER").unwrap_or("0") {
+                "5" => "ch5_usertest",
+                "6" => "ch6_usertest",
+                "8" => "ch8_usertest",
+                "-5" => "ch5b_usertest",
+                "-6" => "ch6b_usertest",
+                "-7" => "ch7b_usertest",
+                "-8" => "ch8b_usertest",
+                _ => "user_shell",
+            };
+            exec(target);
         } else {
             loop {
                 let mut exit_code: i32 = 0;
                 let pid = wait(&mut exit_code);
                 if pid == -1 {
-                    yield_();
-                    continue;
+                    break;
                 }
-                println!(
-                    "[initproc] Released a zombie process, pid={}, exit_code={}",
-                    pid,
-                    exit_code,
-                );
             }
         }
         0
     }
+
 
 - 第 19 行为 ``fork`` 出的子进程分支，通过 ``exec`` 启动shell程序 ``user_shell`` ，
   注意我们需要在字符串末尾手动加入 ``\0`` 。
@@ -148,10 +166,11 @@ shell程序 ``user_shell`` 实现如下：
     :linenos:
     :emphasize-lines: 28,53,61
 
-    // tg-user/src/bin/ch5b_user_shell.rs
+    // tg-user/src/bin/user_shell.rs
 
     #![no_std]
     #![no_main]
+    #![allow(clippy::println_empty_string)]
 
     extern crate alloc;
 
@@ -164,21 +183,20 @@ shell程序 ``user_shell`` 实现如下：
     const BS: u8 = 0x08u8;
 
     use alloc::string::String;
-    use user_lib::{fork, exec, waitpid, yield_};
-    use user_lib::console::getchar;
+    use user_lib::{exec, fork, getchar, waitpid};
 
     #[no_mangle]
-    pub fn main() -> i32 {
+    pub extern "C" fn main() -> i32 {
         println!("Rust user shell");
-        let mut line: String = String::new();
+        let mut line: String = String::new(); // 记录着当前输入的命令
         print!(">> ");
         loop {
             let c = getchar();
             match c {
                 LF | CR => {
-                    println!("");
+                    // 换行
+                    println!();
                     if !line.is_empty() {
-                        line.push('\0');
                         let pid = fork();
                         if pid == 0 {
                             // child process
@@ -189,18 +207,16 @@ shell程序 ``user_shell`` 实现如下：
                             unreachable!();
                         } else {
                             let mut exit_code: i32 = 0;
-                            let exit_pid = waitpid(pid as usize, &mut exit_code);
+                            let exit_pid = waitpid(pid as isize, &mut exit_code);
                             assert_eq!(pid, exit_pid);
-                            println!(
-                                "Shell: Process {} exited with code {}",
-                                pid, exit_code
-                            );
+                            println!("Shell: Process {} exited with code {}", pid, exit_code);
                         }
                         line.clear();
                     }
                     print!(">> ");
                 }
                 BS | DL => {
+                    // backspace
                     if !line.is_empty() {
                         print!("{}", BS as char);
                         print!(" ");
@@ -215,6 +231,7 @@ shell程序 ``user_shell`` 实现如下：
             }
         }
     }
+
 
 可以看到，在以第 25 行开头的主循环中，每次都是调用 ``getchar`` 获取一个用户输入的字符，
 并根据它相应进行一些动作。第 23 行声明的字符串 ``line`` 则维护着用户当前输入的命令内容，它也在不断发生变化。

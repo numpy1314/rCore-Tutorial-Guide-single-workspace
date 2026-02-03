@@ -93,7 +93,7 @@
         }
     }
 
-这种设计极大地简化了资源管理，我们不需要手动调用 ``free_pid`` 之类的函数，只要 ``Process`` 结构体被销毁，其中包含的 ``ProcId`` 字段就会自动触发回收逻辑。
+这种设计极大地简化了资源管理，我们不需要手动调用 ``free_pid`` 之类的函数，只要 ``Process`` 结构体被销毁，其中包含的 ``ProcId`` 字段就会自动触发回收逻辑。（好像没看到有对pid的回收，这部分存疑？）
 
 异界上下文 (ForeignContext)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -124,12 +124,12 @@
         /// 4. 执行 sret 返回用户态。
         /// 
         /// 当用户态发生 Trap 时，会逆向执行上述过程，返回到 execute 调用的下一条指令。
-        pub unsafe fn execute(&mut self);
+        pub unsafe extern "C" fn foreign_execute(ctx: *mut PortalCache);
     }
 
 **为什么不再需要对每个进程分配一个独立的内核栈？**
 
-因为在 ``ForeignContext::execute()`` 返回后，CPU 已经回到了内核地址空间，并且使用的是调用 ``execute`` 时的内核栈（即全局启动栈）。所有的 Trap 处理逻辑（系统调用处理、缺页异常处理）都直接在这个共享的内核栈上运行。
+因为在 ``ForeignContext::foreign_execute()`` 返回后，CPU 已经回到了内核地址空间，并且使用的是调用 ``foreign_execute`` 时的内核栈（即全局启动栈）。所有的 Trap 处理逻辑（系统调用处理、缺页异常处理）都直接在这个共享的内核栈上运行。
 
 这种设计使得 ``Process`` 结构体不需要再拥有一个 ``kernel_stack`` 字段，减少了内存开销，也简化了进程创建的过程。
 
@@ -192,39 +192,39 @@
 
         /// exec 系统调用实现：替换当前进程内容
         pub fn exec(&mut self, elf: ElfFile) {
-            // 使用新程序创建临时进程实例
             let proc = Process::from_elf(elf).unwrap();
-            // 用新实例的资源替换当前资源
-            self.address_space = proc.address_space;
-            self.context = proc.context;
-            self.heap_bottom = proc.heap_bottom;
-            self.program_brk = proc.program_brk;
-            // 注意：pid 保持不变
+            self.address_space = proc.address_space;    // 替换地址空间
+            self.context = proc.context;               // 替换上下文
+            self.heap_bottom = proc.heap_bottom;        // 替换堆底
+            self.program_brk = proc.program_brk;        // 替换程序断点
+            // pid 保持不变
         }
 
         /// fork 系统调用实现：复制当前进程
         pub fn fork(&mut self) -> Option<Process> {
             // 1. 分配新 PID
             let pid = ProcId::new();
+            let parent_addr_space = &self.address_space;
             
             // 2. 深度拷贝地址空间 (Copy-on-Write 可在此处优化，目前为深拷贝)
             let mut address_space = AddressSpace::new();
-            self.address_space.cloneself(&mut address_space);
+            parent_addr_space.cloneself(&mut address_space);
             
             // 3. 必须重新映射异界传送门 (Trampoline)
             // 因为新页表需要访问内核的 Trap 处理入口
-            crate::process::map_portal(&address_space);
+            map_portal(&address_space); 
 
             // 4. 复制上下文
             // 注意更新 satp 为新页表的物理页号
             let context = self.context.context.clone();
             let satp = (8 << 60) | address_space.root_ppn().val();
+            let foreign_ctx = ForeignContext { context, satp };
             
             Some(Self {
                 pid,
-                context: ForeignContext { context, satp },
+                context: foreign_ctx,               // 使用新上下文
                 address_space,
-                heap_bottom: self.heap_bottom,
+                heap_bottom: self.heap_bottom,      // 复制堆信息
                 program_brk: self.program_brk,
             })
         }
@@ -352,27 +352,20 @@
         // 1. 获取处理器管理器的可变引用
         let manager = PROCESSOR.get_mut();
 
-        // 2. 尝试从调度队列获取下一个任务的 PID
-        if let Some(pid) = manager.fetch() {
-            // 3. 根据 PID 获取进程实体的引用
-            let task = manager.get_mut(pid).unwrap();
+        // 2. 尝试从调度队列获取下一个任务 Process 的可变引用
+        if let Some(task) = unsafe { (*processor).find_next() } {
             
-            // 4. 执行进程！
+            // 3. 执行进程！
             // 这一步会切换到用户态。
             // 当 execute 返回时，意味着发生了 Trap（系统调用、时钟中断等）
-            unsafe { task.context.execute() };
+            unsafe { task.context.execute(portal, ()) };  // 使用传送门进行地址空间切换
 
-            // 5. 处理 Trap
+            // 4. 处理 Trap
             // 此时我们回到了内核态，根据 scause 寄存器判断原因
             match scause::read().cause() {
                 Trap::Exception(Exception::UserEnvCall) => {
                     // 处理系统调用
-                    // 如果是 exit，则调用 manager.delete(pid)
-                    // 如果是 yield，则调用 manager.add(pid) 重新放入队尾
-                }
-                Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                    // 时间片耗尽，放入队尾
-                    manager.add(pid);
+                    // 如果是 exit，则调用 unsafe { (*processor).make_current_suspend() }
                 }
                 // ... 其他情况
             }
