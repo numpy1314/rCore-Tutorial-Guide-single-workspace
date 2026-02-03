@@ -48,7 +48,7 @@ waitpid 系统调用
 .. code-block:: rust
     :linenos:
 
-    // user/src/lib.rs
+    // tg-user/src/lib.rs
 
     pub fn wait(exit_code: &mut i32) -> isize {
         loop {
@@ -74,7 +74,7 @@ waitpid 系统调用
 .. code-block:: rust
     :linenos:
 
-    // user/src/bin/ch5b_initproc.rs
+    // tg-user/src/bin/ch5b_initproc.rs
 
     #![no_std]
     #![no_main]
@@ -134,7 +134,7 @@ user_shell 需要捕获用户输入并进行解析处理，为此添加一个能
 
 .. code-block:: rust
 
-    // user/src/syscall.rs
+    // tg-user/src/syscall.rs
 
     pub fn sys_read(fd: usize, buffer: &mut [u8]) -> isize {
         syscall(SYSCALL_READ, [fd, buffer.as_mut_ptr() as usize, buffer.len()])
@@ -148,7 +148,7 @@ shell程序 ``user_shell`` 实现如下：
     :linenos:
     :emphasize-lines: 28,53,61
 
-    // user/src/bin/ch5b_user_shell.rs
+    // tg-user/src/bin/ch5b_user_shell.rs
 
     #![no_std]
     #![no_main]
