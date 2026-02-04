@@ -1,0 +1,660 @@
+<!doctype html>
+<html class="no-js" lang="zh_CN">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><link rel="index" title="索引" href="../genindex.html" /><link rel="search" title="搜索" href="../search.html" /><link rel="next" title="管理多道程序" href="3multiprogramming.html" /><link rel="prev" title="引言" href="0intro.html" />
+
+    <meta name="generator" content="sphinx-4.1.2, furo 2021.08.31"/>
+        <title>多道程序放置与加载 - rCore-Tutorial-Guide 文档</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?digest=c7c65a82b42f6b978e58466c1e9ef2509836d916" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?digest=16fb25fabf47304eee183a5e9af80b1ba98259b1" />
+    <link rel="stylesheet" type="text/css" href="../_static/my_style.css" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  body[data-theme="dark"] {
+    --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+  }
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+  }
+</style></head>
+  <body>
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="none" d="M0 0h24v24H0z" />
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="10" y1="12" x2="20" y2="12" />
+      <line x1="6" y1="18" x2="20" y2="18" />
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">rCore-Tutorial-Guide  文档</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  
+  <span class="sidebar-brand-text">rCore-Tutorial-Guide  文档</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder=搜索 name="q" aria-label="搜索">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">正文</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../0setup-devel-env.html">第零章：实验环境配置</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../chapter1/index.html">第一章：应用程序与基本执行环境</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../chapter1/0intro.html">引言</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter1/1app-ee-platform.html">应用程序执行环境与平台支持</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter1/2remove-std.html">移除标准库依赖</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter1/3mini-rt-usrland.html">构建用户态执行环境</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter1/4mini-rt-baremetal.html">构建裸机执行环境</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../chapter2/index.html">第二章：批处理系统</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../chapter2/0intro.html">引言</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter2/2application.html">实现应用程序</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter2/3batch-system.html">实现批处理操作系统</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter2/4trap-handling.html">实现特权级的切换</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">第三章：多道程序与分时多任务</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="0intro.html">引言</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">多道程序放置与加载</a></li>
+<li class="toctree-l2"><a class="reference internal" href="3multiprogramming.html">管理多道程序</a></li>
+<li class="toctree-l2"><a class="reference internal" href="4time-sharing-system.html">分时多任务系统</a></li>
+<li class="toctree-l2"><a class="reference internal" href="5exercise.html">chapter3练习</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../chapter4/index.html">第四章：地址空间</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../chapter4/0intro.html">引言</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter4/3sv39-implementation-1.html">实现 SV39 多级页表机制（上）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter4/4sv39-implementation-2.html">实现 SV39 多级页表机制（下）</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter4/5kernel-app-spaces.html">内核与应用的地址空间</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter4/6multitasking-based-on-as.html">基于地址空间的分时多任务</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter4/7exercise.html">chapter4练习</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../chapter5/index.html">第五章：进程及进程管理</a><input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../chapter5/0intro.html">引言</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter5/1process.html">与进程有关的重要系统调用</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter5/2core-data-structures.html">进程管理的核心数据结构</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter5/3implement-process-mechanism.html">进程管理机制的设计实现</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter5/4exercise.html">chapter5练习</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../chapter6/index.html">第六章：文件系统与I/O重定向</a><input class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../chapter6/0intro.html">引言</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter6/1file-descriptor.html">文件与文件描述符</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter6/1fs-interface.html">文件系统接口</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter6/2fs-implementation-1.html">简易文件系统 easy-fs (上)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter6/2fs-implementation-2.html">简易文件系统 easy-fs (下)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter6/3using-easy-fs-in-kernel.html">在内核中使用 easy-fs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter6/4exercise.html">chapter6练习</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../chapter7/index.html">第七章：进程间通信</a><input class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../chapter7/0intro.html">引言</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter7/1pipe.html">管道</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter7/2cmdargs-and-redirection.html">命令行参数与标准 I/O 重定向</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter7/3exercise.html">chapter7练习</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../chapter8/index.html">第八章：并发</a><input class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../chapter8/0intro.html">引言</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter8/1thread-kernel.html">内核态的线程管理</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter8/2lock.html">锁机制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter8/3semaphore.html">信号量机制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter8/4condition-variable.html">条件变量机制</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../chapter8/5exercise.html">chapter8 练习</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">附录</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../appendix-a/index.html">附录 A：Rust 系统编程资料</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../appendix-b/index.html">附录 B：常见工具的使用方法</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../appendix-c/index.html">附录 C：深入机器模式：RustSBI</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../appendix-d/index.html">附录 D：RISC-V相关信息</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">开发注记</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../setup-sphinx.html">修改和构建本项目</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../rest-example.html">reStructuredText 基本语法</a></li>
+</ul>
+
+</div>
+</div>
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <article role="main">
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <div class="section" id="id1">
+<h1>多道程序放置与加载<a class="headerlink" href="#id1" title="永久链接至标题">¶</a></h1>
+<div class="section" id="id2">
+<h2>多道程序放置<a class="headerlink" href="#id2" title="永久链接至标题">¶</a></h2>
+<p>在第二章中，内核将每个应用都加载到同一个固定的起始地址，后加载的程序会覆盖之前加载的程序。
+这使得内存中同时最多只能驻留一个应用。</p>
+<p>想一次运行多个程序，就需要内核将每个用户程序加载到不同的起始地址。
+注意运行本章节代码时，下面这一段中的输出：
+.. code-block:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>for (i, app) in tg_linker::AppMeta::locate().iter().enumerate() {
+    let entry = app.as_ptr() as usize;
+    log::info!("load app{i} to {entry:#x}");
+    tcbs[i].init(entry);
+    index_mod += 1;
+}
+</pre></div>
+</div>
+<p>代码中的 <code class="docutils literal notranslate"><span class="pre">log::info!</span></code> 的输出结果表明，内核确实将每个用户程序加载到了各自不同的地址，每个程序间隔 <code class="docutils literal notranslate"><span class="pre">0x200000</span></code>。
+只要我们假设每个程序所占内存都不会超过这个间隔，那么它们就都可以互不干扰地同时运行。</p>
+<div class="admonition note">
+<p class="admonition-title">注解</p>
+<p>qemu 预留的内存空间是有限的，如果加载的程序过多，程序地址超出内存空间，可能出现 <code class="docutils literal notranslate"><span class="pre">core</span> <span class="pre">dumped</span></code>.</p>
+</div>
+</div>
+<div class="section" id="id3">
+<h2>多道程序加载<a class="headerlink" href="#id3" title="永久链接至标题">¶</a></h2>
+<p>第三章沿用了第二章的许多用户程序。
+它们的内容并没有改变，但却被内核以不同的方式放入内存。
+观察在内核启动之前的输出：</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># LOG=INFO cargo qemu --ch 3
+    Finished `release` profile [optimized] target(s) in 0.05s
+    Running `target/release/xtask qemu --ch 3`
+build "00hello_world" at 0x80400000
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
+build "01store_fault" at 0x80600000
+Compiling user_lib v0.0.1 (/home/scpointer/2026/rCore-Tutorial-in-single-workspace/user)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+build "02power" at 0x80800000
+......
+</pre></div>
+</div>
+<p>可以看到，每个用户程序在编译时就已经指定了各自的起始地址。
+事实上，这个起始地址是由链接文件 <code class="docutils literal notranslate"><span class="pre">linker.ld</span></code> 指定的。
+我们需要通过某种方法，在编译每个用户程序时自动修改该文件，就能将每个程序指定在不同位置了。</p>
+<ol class="arabic simple">
+<li><p>首先， <code class="docutils literal notranslate"><span class="pre">user\cases.toml</span></code> 中指定了每个章节对应的参数，其中 <code class="docutils literal notranslate"><span class="pre">[ch3]</span></code> 下的子项指定了本章的参数，包括起始地址 <code class="docutils literal notranslate"><span class="pre">0x8040_0000</span></code> 、每个用户程序之间的间隔 <code class="docutils literal notranslate"><span class="pre">0x0020_0000</span></code> 和一个程序列表。</p></li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">注解</p>
+<p>相比 <code class="docutils literal notranslate"><span class="pre">Cargo.toml</span></code> ，这个 <code class="docutils literal notranslate"><span class="pre">cases.toml</span></code> 并不是 Rust 规范中的文件，它只是用来存储参数的文件，理论上完全可以用 json 或其他格式代替。</p>
+</div>
+<ol class="arabic simple" start="2">
+<li><p>这个参数文件被 <code class="docutils literal notranslate"><span class="pre">xtask/src/user.rs:build_for</span></code> 读取，经过 <code class="docutils literal notranslate"><span class="pre">toml::from_str</span></code> 的解析，上述信息被传递给 <code class="docutils literal notranslate"><span class="pre">cases</span></code> 变量。</p></li>
+</ol>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// xtask/src/user.rs</span>
+
+<span class="k">pub</span><span class="w"> </span><span class="k">fn</span> <span class="nf">build_for</span><span class="p">(</span><span class="n">ch</span>: <span class="kt">u8</span><span class="p">,</span><span class="w"> </span><span class="n">release</span>: <span class="kt">bool</span><span class="p">,</span><span class="w"> </span><span class="n">exercise</span>: <span class="kt">bool</span><span class="p">,</span><span class="w"> </span><span class="n">ci</span>: <span class="kt">bool</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">cfg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span>::<span class="n">fs</span>::<span class="n">read_to_string</span><span class="p">(</span><span class="n">PROJECT</span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="s">"user/cases.toml"</span><span class="p">)).</span><span class="n">unwrap</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">exercise</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="fm">format!</span><span class="p">(</span><span class="s">"ch{ch}_exercise"</span><span class="p">)</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="fm">format!</span><span class="p">(</span><span class="s">"ch{ch}"</span><span class="p">)</span><span class="w"></span>
+<span class="w">    </span><span class="p">};</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">cases</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">toml</span>::<span class="n">from_str</span>::<span class="o">&lt;</span><span class="n">HashMap</span><span class="o">&lt;</span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="n">Cases</span><span class="o">&gt;&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="n">cfg</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">unwrap</span><span class="p">()</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">remove</span><span class="p">(</span><span class="o">&amp;</span><span class="n">key</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">unwrap_or_default</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">CasesInfo</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">base</span><span class="p">,</span><span class="w"> </span><span class="n">step</span><span class="p">,</span><span class="w"> </span><span class="n">bins</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cases</span><span class="p">.</span><span class="n">build</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span><span class="w"> </span><span class="n">release</span><span class="p">,</span><span class="w"> </span><span class="n">ci</span><span class="p">);</span><span class="w"></span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="3">
+<li><p>然后， <code class="docutils literal notranslate"><span class="pre">Case::build</span></code> 函数枚举每个用户程序，通过程序的编号算出它应在的地址（ <code class="docutils literal notranslate"><span class="pre">base</span> <span class="pre">+</span> <span class="pre">i</span> <span class="pre">as</span> <span class="pre">u64</span> <span class="pre">*</span> <span class="pre">step</span></code> ），将程序名与这个地址一同传给 <code class="docutils literal notranslate"><span class="pre">build_one</span></code> 函数。</p></li>
+</ol>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// xtask/src/user.rs</span>
+
+<span class="k">impl</span><span class="w"> </span><span class="n">Cases</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">fn</span> <span class="nf">build</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span><span class="w"> </span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">ch</span>: <span class="kt">u8</span><span class="p">,</span><span class="w"> </span><span class="n">release</span>: <span class="kt">bool</span><span class="p">,</span><span class="w"> </span><span class="n">ci</span>: <span class="kt">bool</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="nc">CasesInfo</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">names</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="n">cases</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">base</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">base</span><span class="p">.</span><span class="n">unwrap_or</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span><span class="w"></span>
+<span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">step</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">step</span><span class="p">.</span><span class="n">filter</span><span class="p">(</span><span class="o">|</span><span class="n">_</span><span class="o">|</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">base</span><span class="p">.</span><span class="n">is_some</span><span class="p">()).</span><span class="n">unwrap_or</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span><span class="w"></span>
+<span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">chapter_env</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">ci</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nb">None</span><span class="w"> </span><span class="p">};</span><span class="w"></span>
+<span class="w">            </span><span class="kd">let</span><span class="w"> </span><span class="n">cases</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">names</span><span class="w"></span>
+<span class="w">                </span><span class="p">.</span><span class="n">iter</span><span class="p">()</span><span class="w"></span>
+<span class="w">                </span><span class="p">.</span><span class="n">enumerate</span><span class="p">()</span><span class="w"></span>
+<span class="w">                </span><span class="p">.</span><span class="n">map</span><span class="p">(</span><span class="o">|</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="o">|</span><span class="w"> </span><span class="n">build_one</span><span class="p">(</span><span class="n">chapter_env</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">release</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="kt">u64</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">step</span><span class="p">))</span><span class="w"></span>
+<span class="w">                </span><span class="p">.</span><span class="n">collect</span><span class="p">();</span><span class="w"></span>
+</pre></div>
+</div>
+<p>4. 这个 <code class="docutils literal notranslate"><span class="pre">build_one</span></code> 中包含一条超长的 cargo 命令。
+它的核心是 <code class="docutils literal notranslate"><span class="pre">Cargo::build().package("user_lib").invoke()</span></code> ，而中间的语句都是在增加参数和环境变量。
+例如，在 <code class="docutils literal notranslate"><span class="pre">build_one(Some(3),</span> <span class="pre">"00hello_world",</span> <span class="pre">true,</span> <span class="pre">0x80400000)</span></code> 中，上述命令实际相当于 <code class="docutils literal notranslate"><span class="pre">CHAPTER=3</span> <span class="pre">BASE_ADDRESS=0x80400000</span> <span class="pre">cargo</span> <span class="pre">build</span> <span class="pre">--package</span> <span class="pre">user_lib</span> <span class="pre">--bin</span> <span class="pre">00hello_world</span> <span class="pre">--release</span></code> 。</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// xtask/src/user.rs</span>
+
+<span class="k">fn</span> <span class="nf">build_one</span><span class="p">(</span><span class="w"></span>
+<span class="w">    </span><span class="n">chapter_env</span>: <span class="nb">Option</span><span class="o">&lt;</span><span class="kt">u8</span><span class="o">&gt;</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">name</span>: <span class="nc">impl</span><span class="w"> </span><span class="nb">AsRef</span><span class="o">&lt;</span><span class="n">OsStr</span><span class="o">&gt;</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">release</span>: <span class="kt">bool</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">base_address</span>: <span class="kt">u64</span><span class="p">,</span><span class="w"></span>
+<span class="p">)</span><span class="w"> </span>-&gt; <span class="nc">PathBuf</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">name</span><span class="p">.</span><span class="n">as_ref</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">binary</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">base_address</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">binary</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="fm">println!</span><span class="p">(</span><span class="s">"build {name:?} at {base_address:#x}"</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="n">Cargo</span>::<span class="n">build</span><span class="p">()</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">package</span><span class="p">(</span><span class="s">"user_lib"</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">target</span><span class="p">(</span><span class="n">TARGET_ARCH</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">arg</span><span class="p">(</span><span class="s">"--bin"</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">arg</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">conditional</span><span class="p">(</span><span class="n">chapter_env</span><span class="p">.</span><span class="n">is_some</span><span class="p">(),</span><span class="w"> </span><span class="o">|</span><span class="n">cargo</span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">            </span><span class="n">cargo</span><span class="p">.</span><span class="n">env</span><span class="p">(</span><span class="s">"CHAPTER"</span><span class="p">,</span><span class="w"> </span><span class="n">chapter_env</span><span class="p">.</span><span class="n">unwrap</span><span class="p">().</span><span class="n">to_string</span><span class="p">());</span><span class="w"></span>
+<span class="w">        </span><span class="p">})</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">conditional</span><span class="p">(</span><span class="n">release</span><span class="p">,</span><span class="w"> </span><span class="o">|</span><span class="n">cargo</span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">            </span><span class="n">cargo</span><span class="p">.</span><span class="n">release</span><span class="p">();</span><span class="w"></span>
+<span class="w">        </span><span class="p">})</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">conditional</span><span class="p">(</span><span class="n">binary</span><span class="p">,</span><span class="w"> </span><span class="o">|</span><span class="n">cargo</span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">            </span><span class="n">cargo</span><span class="p">.</span><span class="n">env</span><span class="p">(</span><span class="s">"BASE_ADDRESS"</span><span class="p">,</span><span class="w"> </span><span class="n">base_address</span><span class="p">.</span><span class="n">to_string</span><span class="p">());</span><span class="w"></span>
+<span class="w">        </span><span class="p">})</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">invoke</span><span class="p">();</span><span class="w"></span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">elf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TARGET</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="n">release</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s">"release"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s">"debug"</span><span class="w"> </span><span class="p">})</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="n">name</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="n">binary</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="n">objcopy</span><span class="p">(</span><span class="n">elf</span><span class="p">,</span><span class="w"> </span><span class="n">binary</span><span class="p">)</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="n">elf</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="5">
+<li><p>这里的 <code class="docutils literal notranslate"><span class="pre">BASE_ADDRESS</span></code> 只是一个环境变量，它本身无法“魔法”地改变起始地址。这还需要 <code class="docutils literal notranslate"><span class="pre">user/build.rs</span></code> 的帮助。</p></li>
+</ol>
+<p>注意， <code class="docutils literal notranslate"><span class="pre">cargo:rerun-if-env-changed=BASE_ADDRESS</span></code> 一行说明 <code class="docutils literal notranslate"><span class="pre">BASE_ADDRESS</span></code> 这一环境变量改变时，该模块需要重新构建。随后，我们构建了一个 <code class="docutils literal notranslate"><span class="pre">text</span></code> 字符串，将这一地址信息存入其中，然后将字符串写入 <code class="docutils literal notranslate"><span class="pre">linker.ld</span></code> 文件。</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// user/build.rs</span>
+
+<span class="k">fn</span> <span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">use</span><span class="w"> </span><span class="n">std</span>::<span class="p">{</span><span class="n">env</span><span class="p">,</span><span class="w"> </span><span class="n">fs</span><span class="p">,</span><span class="w"> </span><span class="n">path</span>::<span class="n">PathBuf</span><span class="p">};</span><span class="w"></span>
+
+<span class="w">    </span><span class="fm">println!</span><span class="p">(</span><span class="s">"cargo:rerun-if-changed=build.rs"</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="fm">println!</span><span class="p">(</span><span class="s">"cargo:rerun-if-env-changed=LOG"</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="fm">println!</span><span class="p">(</span><span class="s">"cargo:rerun-if-env-changed=BASE_ADDRESS"</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="fm">println!</span><span class="p">(</span><span class="s">"cargo:rerun-if-env-changed=CHAPTER"</span><span class="p">);</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Ok</span><span class="p">(</span><span class="n">chapter</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">env</span>::<span class="n">var</span><span class="p">(</span><span class="s">"CHAPTER"</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="fm">println!</span><span class="p">(</span><span class="s">"cargo:rustc-env=CHAPTER={chapter}"</span><span class="p">);</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">base</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">env</span>::<span class="n">var</span><span class="p">(</span><span class="s">"BASE_ADDRESS"</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">ok</span><span class="p">()</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">and_then</span><span class="p">(</span><span class="o">|</span><span class="n">s</span><span class="o">|</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">parse</span>::<span class="o">&lt;</span><span class="kt">u64</span><span class="o">&gt;</span><span class="p">().</span><span class="n">ok</span><span class="p">())</span><span class="w"></span>
+<span class="w">    </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="fm">format!</span><span class="p">(</span><span class="w"></span>
+<span class="w">            </span><span class="s">"\</span>
+<span class="s">OUTPUT_ARCH(riscv)</span>
+<span class="s">ENTRY(_start)</span>
+<span class="s">SECTIONS {{</span>
+<span class="s">    . = {base};</span>
+<span class="s">    .text : {{</span>
+<span class="s">        *(.text.entry)</span>
+<span class="s">        *(.text .text.*)</span>
+<span class="s">    }}</span>
+<span class="s">    .rodata : {{</span>
+<span class="s">        *(.rodata .rodata.*)</span>
+<span class="s">        *(.srodata .srodata.*)</span>
+<span class="s">    }}</span>
+<span class="s">    .data : {{</span>
+<span class="s">        *(.data .data.*)</span>
+<span class="s">        *(.sdata .sdata.*)</span>
+<span class="s">    }}</span>
+<span class="s">    .bss : {{</span>
+<span class="s">        *(.bss .bss.*)</span>
+<span class="s">        *(.sbss .sbss.*)</span>
+<span class="s">    }}</span>
+<span class="s">}}"</span><span class="w"></span>
+<span class="w">        </span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">ld</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">PathBuf</span>::<span class="n">from</span><span class="p">(</span><span class="n">env</span>::<span class="n">var_os</span><span class="p">(</span><span class="s">"OUT_DIR"</span><span class="p">).</span><span class="n">unwrap</span><span class="p">()).</span><span class="n">join</span><span class="p">(</span><span class="s">"linker.ld"</span><span class="p">);</span><span class="w"></span>
+<span class="w">        </span><span class="n">fs</span>::<span class="n">write</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ld</span><span class="p">,</span><span class="w"> </span><span class="n">text</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span><span class="w"></span>
+<span class="w">        </span><span class="fm">println!</span><span class="p">(</span><span class="s">"cargo:rustc-link-arg=-T{}"</span><span class="p">,</span><span class="w"> </span><span class="n">ld</span><span class="p">.</span><span class="n">display</span><span class="p">());</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="6">
+<li><p>至此，我们完成了本小节开头的任务——即在编译每个用户程序时，自动修改 <code class="docutils literal notranslate"><span class="pre">linker.ld</span></code> 中的起始地址。</p></li>
+</ol>
+<p>但别忘了 <code class="docutils literal notranslate"><span class="pre">build_for</span></code> 函数的后半段，我们还得把起始地址与间隔的信息告诉内核。这些信息被打包在 <code class="docutils literal notranslate"><span class="pre">app.asm</span></code> 文件中，你可以直接在 <code class="docutils literal notranslate"><span class="pre">target/riscv64gc-unknown-none-elf/debug/app.asm</span></code> 找到它，对照代码阅读文件内容。</p>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// xtask/src/user.rs</span>
+
+<span class="kd">let</span><span class="w"> </span><span class="n">CasesInfo</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">base</span><span class="p">,</span><span class="w"> </span><span class="n">step</span><span class="p">,</span><span class="w"> </span><span class="n">bins</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cases</span><span class="p">.</span><span class="n">build</span><span class="p">(</span><span class="n">ch</span><span class="p">,</span><span class="w"> </span><span class="n">release</span><span class="p">,</span><span class="w"> </span><span class="n">ci</span><span class="p">);</span><span class="w"></span>
+<span class="k">if</span><span class="w"> </span><span class="n">bins</span><span class="p">.</span><span class="n">is_empty</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">return</span><span class="p">;</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+<span class="kd">let</span><span class="w"> </span><span class="n">asm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TARGET</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="k">if</span><span class="w"> </span><span class="n">release</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s">"release"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s">"debug"</span><span class="w"> </span><span class="p">})</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">join</span><span class="p">(</span><span class="s">"app.asm"</span><span class="p">);</span><span class="w"></span>
+<span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">ld</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">File</span>::<span class="n">create</span><span class="p">(</span><span class="n">asm</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span><span class="w"></span>
+<span class="fm">writeln!</span><span class="p">(</span><span class="w"></span>
+<span class="w">    </span><span class="n">ld</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="s">"\</span>
+<span class="s">    .global apps</span>
+<span class="s">    .section .data</span>
+<span class="s">    .align 3</span>
+<span class="s">apps:</span>
+<span class="s">    .quad {base:#x}</span>
+<span class="s">    .quad {step:#x}</span>
+<span class="s">    .quad {}"</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">bins</span><span class="p">.</span><span class="n">len</span><span class="p">(),</span><span class="w"></span>
+<span class="p">)</span><span class="w"></span>
+<span class="p">.</span><span class="n">unwrap</span><span class="p">();</span><span class="w"></span>
+
+<span class="p">(</span><span class="mi">0</span><span class="o">..</span><span class="n">bins</span><span class="p">.</span><span class="n">len</span><span class="p">()).</span><span class="n">for_each</span><span class="p">(</span><span class="o">|</span><span class="n">i</span><span class="o">|</span><span class="w"> </span><span class="fm">writeln!</span><span class="p">(</span><span class="n">ld</span><span class="p">,</span><span class="w"> </span><span class="s">"    .quad app_{i}_start"</span><span class="p">).</span><span class="n">unwrap</span><span class="p">());</span><span class="w"></span>
+
+<span class="fm">writeln!</span><span class="p">(</span><span class="n">ld</span><span class="p">,</span><span class="w"> </span><span class="s">"    .quad app_{}_end"</span><span class="p">,</span><span class="w"> </span><span class="n">bins</span><span class="p">.</span><span class="n">len</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span><span class="w"></span>
+
+<span class="n">bins</span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">enumerate</span><span class="p">().</span><span class="n">for_each</span><span class="p">(</span><span class="o">|</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">path</span><span class="p">)</span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="fm">writeln!</span><span class="p">(</span><span class="w"></span>
+<span class="w">        </span><span class="n">ld</span><span class="p">,</span><span class="w"></span>
+<span class="w">            </span><span class="s">"</span>
+<span class="s">app_{i}_start:</span>
+<span class="s">    .incbin {path:?}</span>
+<span class="s">app_{i}_end:"</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="p">)</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">unwrap</span><span class="p">();</span><span class="w"></span>
+<span class="p">});</span><span class="w"></span>
+
+<span class="c1">// app.asm</span>
+<span class="w">    </span><span class="p">.</span><span class="n">global</span><span class="w"> </span><span class="n">apps</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">section</span><span class="w"> </span><span class="p">.</span><span class="n">data</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">align</span><span class="w"> </span><span class="mi">3</span><span class="w"></span>
+<span class="n">apps</span>:
+    <span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="mh">0x80400000</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="mh">0x200000</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="mi">12</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_0_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_1_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_2_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_3_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_4_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_5_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_6_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_7_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_8_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_9_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_10_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_11_start</span><span class="w"></span>
+<span class="w">    </span><span class="p">.</span><span class="n">quad</span><span class="w"> </span><span class="n">app_11_end</span><span class="w"></span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="7">
+<li><p>最后，内核启动后，<code class="docutils literal notranslate"><span class="pre">tg-linker/src/app.rs</span></code> 中读取上述 <code class="docutils literal notranslate"><span class="pre">app.asm</span></code> 中的 apps 变量存入 <code class="docutils literal notranslate"><span class="pre">AppMeta</span></code> 中，就有了我们在 <code class="docutils literal notranslate"><span class="pre">ch3/src/main.rs</span></code> 里看到的每个用户程序的不同地址。</p></li>
+</ol>
+<div class="highlight-rust notranslate"><div class="highlight"><pre><span></span><span class="c1">// tg-linker/src/app.rs</span>
+
+<span class="sd">/// 应用程序元数据。</span>
+<span class="cp">#[repr(C)]</span><span class="w"></span>
+<span class="k">pub</span><span class="w"> </span><span class="k">struct</span> <span class="nc">AppMeta</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="n">base</span>: <span class="kt">u64</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">step</span>: <span class="kt">u64</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">count</span>: <span class="kt">u64</span><span class="p">,</span><span class="w"></span>
+<span class="w">    </span><span class="n">first</span>: <span class="kt">u64</span><span class="p">,</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+
+<span class="k">impl</span><span class="w"> </span><span class="n">AppMeta</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="sd">/// 定位应用程序元数据。</span>
+<span class="w">    </span><span class="sd">///</span>
+<span class="w">    </span><span class="sd">/// 返回由链接脚本定义的应用程序元数据的静态引用。</span>
+<span class="w">    </span><span class="cp">#[inline]</span><span class="w"></span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span> <span class="nf">locate</span><span class="p">()</span><span class="w"> </span>-&gt; <span class="kp">&amp;</span><span class="o">'</span><span class="nb">static</span> <span class="nc">Self</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="k">extern</span><span class="w"> </span><span class="s">"C"</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">            </span><span class="k">static</span><span class="w"> </span><span class="n">apps</span>: <span class="nc">AppMeta</span><span class="p">;</span><span class="w"></span>
+<span class="w">        </span><span class="p">}</span><span class="w"></span>
+<span class="w">        </span><span class="c1">// SAFETY: `apps` 是由链接脚本定义的静态符号，在程序运行期间始终有效。</span>
+<span class="w">        </span><span class="c1">// 它的内存布局与 AppMeta 结构体匹配（由 #[repr(C)] 保证）。</span>
+<span class="w">        </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="o">&amp;</span><span class="n">apps</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+
+<span class="w">    </span><span class="sd">/// 遍历链接进来的应用程序。</span>
+<span class="w">    </span><span class="cp">#[inline]</span><span class="w"></span>
+<span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span> <span class="nf">iter</span><span class="p">(</span><span class="o">&amp;'</span><span class="nb">static</span><span class="w"> </span><span class="bp">self</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="nc">AppIterator</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">        </span><span class="n">AppIterator</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">meta</span>: <span class="nc">self</span><span class="p">,</span><span class="w"> </span><span class="n">i</span>: <span class="mi">0</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="w">    </span><span class="p">}</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+</div>
+
+      </article>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="3multiprogramming.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">管理多道程序</div>
+              </div>
+              <svg><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="0intro.html">
+              <svg><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">引言</div>
+                
+              </div>
+            </a>
+        </div>
+
+        <div class="related-information">
+              Copyright &#169; OSLab
+            |
+            Built with <a href="https://www.sphinx-doc.org/">Sphinx</a>
+              and
+              <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+              <a href="https://github.com/pradyunsg/furo">Furo theme</a>.
+            |
+            <a class="muted-link" href="../_sources/chapter3/1multi-loader.rst.txt"
+               rel="nofollow">
+              显示源代码
+            </a>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            目录
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">多道程序放置与加载</a><ul>
+<li><a class="reference internal" href="#id2">多道程序放置</a></li>
+<li><a class="reference internal" href="#id3">多道程序加载</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/scripts/main.js"></script>
+    <script kind="utterances">
+
+    var commentsRunWhenDOMLoaded = cb => {
+    if (document.readyState != 'loading') {
+        cb()
+    } else if (document.addEventListener) {
+        document.addEventListener('DOMContentLoaded', cb)
+    } else {
+        document.attachEvent('onreadystatechange', function() {
+        if (document.readyState == 'complete') cb()
+        })
+    }
+}
+
+var addUtterances = () => {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src = "https://utteranc.es/client.js";
+    script.async = "async";
+
+    script.setAttribute("repo", "LearningOS/rCore-Tutorial-Guide");
+    script.setAttribute("issue-term", "pathname");
+    script.setAttribute("theme", "github-light");
+    script.setAttribute("label", "comments");
+    script.setAttribute("crossorigin", "anonymous");
+
+    sections = document.querySelectorAll("div.section");
+    if (sections !== null) {
+        section = sections[sections.length-1];
+        section.appendChild(script);
+    }
+}
+commentsRunWhenDOMLoaded(addUtterances);
+</script>
+    <script src="../_static/translations.js"></script>
+    </body>
+</html>
