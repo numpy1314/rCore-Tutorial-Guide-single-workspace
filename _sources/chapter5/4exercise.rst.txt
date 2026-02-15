@@ -113,22 +113,29 @@ stride 算法深入
    - 为什么？尝试简单说明（不要求严格证明）。
 
    - 已知以上结论，**考虑溢出的情况下**，可以为 Stride 设计特别的比较器，让 BinaryHeap<Stride> 的 pop
-     方法能返回真正最小的 Stride。补全下列代码中的 ``partial_cmp`` 函数，假设两个 Stride 永远不会相等。
+     方法能返回真正最小的 Pass。补全下列代码中的 ``partial_cmp`` 函数，假设两个 Stride 永远不会相等。
 
    .. code-block:: rust
 
      use core::cmp::Ordering;
-    
-     struct Stride(u64);
-    
-     impl PartialOrd for Stride {
+
+     struct Pass(u64);
+
+     impl PartialOrd for Pass {
          fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-             // ...
+             const HALF: u64 = 1u64 << 63; 
+             let diff = self.0.wrapping_sub(other.0);
+
+             if diff < HALF {
+                 Some(Ordering::Greater)
+             } else {
+                 Some(Ordering::Less)
+             }
          }
      }
-    
-     impl PartialEq for Stride {
-         fn eq(&self, other: &Self) -> bool {
+
+     impl PartialEq for Pass {
+         fn eq(&self, _other: &Self) -> bool {
              false
          }
      }
