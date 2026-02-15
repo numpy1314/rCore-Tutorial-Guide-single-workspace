@@ -308,7 +308,7 @@ BigStride 表示一个预先定义的大常数，则该调度方案为每个进�
 <p>其他实验细节：</p>
 <ul class="simple">
 <li><p>stride 调度要求进程优先级 <span class="math notranslate nohighlight">\(\geq 2\)</span>，所以设定进程优先级 <span class="math notranslate nohighlight">\(\leq 1\)</span> 会导致错误。</p></li>
-<li><p>进程初始 stride 设置为 0 即可。</p></li>
+<li><p>进程初始 pass 设置为 0 即可。</p></li>
 <li><p>进程初始优先级设置为 16。</p></li>
 </ul>
 <p>为了实现该调度算法，内核还要增加 set_prio 系统调用</p>
